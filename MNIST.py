@@ -21,8 +21,6 @@ data_train, data_test, labels_train, labels_test = train_test_split(
 
 labels_train = labels_train.values
 
-print("what is labels_train: ", type(labels_train))
-
 
 class Convolution:
 
@@ -197,42 +195,53 @@ pool = MaxPool(2)
 full = Fully_Connected(121, 10)
 
 
-def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200):
+def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_size=64):
     start_time = time.time()
     for epoch in range(epochs):
         total_loss = 0.0
         correct_predictions = 0
 
-        for i in range(len(X)):
-            # Forward propagation
-            conv_out = conv.forward(X[i])
-            pool_out = pool.forward(conv_out)
-            full_out = full.forward(pool_out)
+        # Iterate over batches
+        for batch_start in range(0, len(X), batch_size):
+            batch_end = min(batch_start + batch_size, len(X))
+            batch_X = X[batch_start:batch_end]
+            batch_y = y[batch_start:batch_end]
 
-            # Convert the scalar label to one-hot encoding
-            # Assuming there are 10 classes in MNIST
-            actual_label_one_hot = np.zeros(10)
-            actual_label_one_hot[y[i]] = 1
+            for i in range(len(batch_X)):
+                # Forward propagation
+                conv_out = conv.forward(X[i])
+                pool_out = pool.forward(conv_out)
+                full_out = full.forward(pool_out)
 
-            loss = cross_entropy_loss(full_out.flatten(), y[i])
-            total_loss += loss
+                # Convert the scalar label to one-hot encoding
+                # Assuming there are 10 classes in MNIST
+                actual_label_one_hot = np.zeros(10)
+                actual_label_one_hot[y[i]] = 1
 
-            # Converting to One-Hot encoding
-            one_hot_pred = np.zeros_like(full_out)
-            one_hot_pred[np.argmax(full_out)] = 1
-            one_hot_pred = one_hot_pred.flatten()
+                loss = cross_entropy_loss(full_out.flatten(), y[i])
+                total_loss += loss
 
-            num_pred = np.argmax(one_hot_pred)
-            num_y = np.argmax(y[i])
+                # Converting to One-Hot encoding
+                one_hot_pred = np.zeros_like(full_out)
+                one_hot_pred[np.argmax(full_out)] = 1
+                one_hot_pred = one_hot_pred.flatten()
 
-            if num_pred == num_y:
-                correct_predictions += 1
-            # Backward propagation
-            gradient = cross_entropy_loss_gradient(
-                actual_label_one_hot, full_out.flatten()).reshape((-1, 1))
-            full_back = full.backward(gradient, learning_rate)
-            pool_back = pool.backward(full_back, learning_rate)
-            conv_back = conv.backward(pool_back, learning_rate)
+                num_pred = np.argmax(one_hot_pred)
+                num_y = np.argmax(y[i])
+
+                if num_pred == num_y:
+                    correct_predictions += 1
+                # Backward propagation
+                gradient = cross_entropy_loss_gradient(
+                    actual_label_one_hot, full_out.flatten()).reshape((-1, 1))
+                full_back = full.backward(gradient, learning_rate)
+                pool_back = pool.backward(full_back, learning_rate)
+                conv_back = conv.backward(pool_back, learning_rate)
+
+            # Print batch statistics (optional)
+            average_loss = total_loss / len(batch_X)
+            print(
+                f"Epoch {epoch + 1}/{epochs}, Batch {batch_start // batch_size + 1}/{len(X) // batch_size}, Loss: {average_loss:.4f}")
 
         end_time = time.time()
         epoch_time = end_time - start_time
