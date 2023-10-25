@@ -1,7 +1,5 @@
 import numpy as np
 from scipy.signal import correlate2d
-from PIL import Image
-import matplotlib.pyplot as plt
 import time
 
 from sklearn.datasets import fetch_openml
@@ -11,7 +9,7 @@ from sklearn.model_selection import train_test_split
 mnist_data, mnist_labels = fetch_openml(
     "mnist_784", version=1, return_X_y=True, parser="auto")
 
-data = mnist_data.astype(np.float32)
+data = mnist_data.astype(np.float32) / 255
 labels = mnist_labels.astype(np.int32)
 
 data = data.values.reshape(-1, 28, 28)
@@ -195,7 +193,7 @@ pool = MaxPool(2)
 full = Fully_Connected(121, 10)
 
 
-def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_size=64):
+def train_network(X, y, conv, pool, full, learning_rate=0.001, epochs=200, batch_size=64):
     start_time = time.time()
     for epoch in range(epochs):
         total_loss = 0.0
@@ -216,7 +214,7 @@ def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_
                 # Convert the scalar label to one-hot encoding
                 # Assuming there are 10 classes in MNIST
                 actual_label_one_hot = np.zeros(10)
-                actual_label_one_hot[y[i]] = 1
+                actual_label_one_hot[batch_y[i]] = 1
 
                 loss = cross_entropy_loss(full_out.flatten(), y[i])
                 total_loss += loss
@@ -227,7 +225,7 @@ def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_
                 one_hot_pred = one_hot_pred.flatten()
 
                 num_pred = np.argmax(one_hot_pred)
-                num_y = np.argmax(y[i])
+                num_y = np.argmax(batch_y[i])
 
                 if num_pred == num_y:
                     correct_predictions += 1
@@ -251,6 +249,7 @@ def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_
         # Print epoch statistics
         average_loss = total_loss / len(X)
         accuracy = correct_predictions / len(data_train) * 100
+        print("Correct predictions: ", correct_predictions)
         print(
             f"Epoch {epoch + 1}/{epochs} - Loss: {average_loss:.4f} - Accuracy: {accuracy:.2f}%")
 
