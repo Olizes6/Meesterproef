@@ -33,7 +33,8 @@ class Convolution:
         self.output_shape = (num_filters, input_height -
                              filter_size + 1, input_width - filter_size + 1)
 
-        self.filters = np.random.randn(*self.filter_shape)
+        self.filters = np.random.randn(
+            *self.filter_shape) * np.sqrt(2 / (np.prod(input_shape) * num_filters))
         self.biases = np.random.randn(*self.output_shape)
 
     def forward(self, input_data):
@@ -125,7 +126,8 @@ class Fully_Connected:
     def __init__(self, input_size, output_size):
         self.input_size = input_size
         self.output_size = output_size
-        self.weights = np.random.randn(output_size, self.input_size)
+        self.weights = np.random.randn(
+            output_size, self.input_size) * np.sqrt(2 / self.input_size)  # He initialization
         self.biases = np.random.randn(output_size, 1)
 
     def softmax(self, z):
@@ -188,9 +190,9 @@ def cross_entropy_loss_gradient(actual_labels, predicted_probs):
     return gradient
 
 
-conv = Convolution(data_train[0].shape, 6, 1)
+conv = Convolution(data_train[0].shape, 3, 1)
 pool = MaxPool(2)
-full = Fully_Connected(121, 10)
+full = Fully_Connected(169, 10)
 
 
 def train_network(X, y, conv, pool, full, learning_rate=0.001, epochs=200, batch_size=64):
