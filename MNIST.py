@@ -1,7 +1,6 @@
 import numpy as np
-from scipy.signal import correlate2d
-from PIL import Image
 import matplotlib.pyplot as plt
+from scipy.signal import correlate2d
 import time
 
 from sklearn.datasets import fetch_openml
@@ -11,7 +10,7 @@ from sklearn.model_selection import train_test_split
 mnist_data, mnist_labels = fetch_openml(
     "mnist_784", version=1, return_X_y=True, parser="auto")
 
-data = mnist_data.astype(np.float32)
+data = mnist_data.astype(np.float32) / 255
 labels = mnist_labels.astype(np.int32)
 
 data = data.values.reshape(-1, 28, 28)
@@ -20,7 +19,6 @@ data_train, data_test, labels_train, labels_test = train_test_split(
     data, labels, test_size=0.2, random_state=42)
 
 labels_train = labels_train.values
-
 
 class Convolution:
 
@@ -35,7 +33,8 @@ class Convolution:
         self.output_shape = (num_filters, input_height -
                              filter_size + 1, input_width - filter_size + 1)
 
-        self.filters = np.random.randn(*self.filter_shape)
+        self.filters = np.random.randn(
+            *self.filter_shape) * np.sqrt(2 / (np.prod(input_shape) * num_filters))
         self.biases = np.random.randn(*self.output_shape)
 
     def forward(self, input_data):
@@ -127,7 +126,7 @@ class Fully_Connected:
     def __init__(self, input_size, output_size):
         self.input_size = input_size
         self.output_size = output_size
-        self.weights = np.random.randn(output_size, self.input_size)
+        self.weights = np.random.randn(output_size, self.input_size) 
         self.biases = np.random.randn(output_size, 1)
 
     def softmax(self, z):
@@ -189,14 +188,26 @@ def cross_entropy_loss_gradient(actual_labels, predicted_probs):
 
     return gradient
 
+def plot_data(loss_value, accuracy_value, epochs):
+    plt.plot(epochs, accuracy_value, label = "Accuracy")
+    plt.plot(epochs, loss_value, label = "Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Value")
+    plt.title("Learning progress")
+    plt.show(block=False)
+    plt.pause(0.001)
 
-conv = Convolution(data_train[0].shape, 6, 1)
+
+conv = Convolution(data_train[0].shape, 3, 1)
 pool = MaxPool(2)
-full = Fully_Connected(121, 10)
+full = Fully_Connected(169, 10)
 
 
-def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_size=64):
+def train_network(X, y, conv, pool, full, learning_rate=0.001, epochs=200, batch_size=64):
     start_time = time.time()
+    accuracy_graph = []  # To store accuracy values for each epoch
+    loss_graph = []  # To store loss values for each epoch
+    epochs_graph = []
     for epoch in range(epochs):
         total_loss = 0.0
         correct_predictions = 0
@@ -209,16 +220,16 @@ def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_
 
             for i in range(len(batch_X)):
                 # Forward propagation
-                conv_out = conv.forward(X[i])
+                conv_out = conv.forward(batch_X[i])
                 pool_out = pool.forward(conv_out)
                 full_out = full.forward(pool_out)
 
                 # Convert the scalar label to one-hot encoding
                 # Assuming there are 10 classes in MNIST
                 actual_label_one_hot = np.zeros(10)
-                actual_label_one_hot[y[i]] = 1
+                actual_label_one_hot[batch_y[i]] = 1
 
-                loss = cross_entropy_loss(full_out.flatten(), y[i])
+                loss = cross_entropy_loss(full_out.flatten(), batch_y[i])
                 total_loss += loss
 
                 # Converting to One-Hot encoding
@@ -227,7 +238,7 @@ def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_
                 one_hot_pred = one_hot_pred.flatten()
 
                 num_pred = np.argmax(one_hot_pred)
-                num_y = np.argmax(y[i])
+                num_y = np.argmax(batch_y[i])
 
                 if num_pred == num_y:
                     correct_predictions += 1
@@ -238,10 +249,8 @@ def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_
                 pool_back = pool.backward(full_back, learning_rate)
                 conv_back = conv.backward(pool_back, learning_rate)
 
-            # Print batch statistics (optional)
-            average_loss = total_loss / len(batch_X)
             print(
-                f"Epoch {epoch + 1}/{epochs}, Batch {batch_start // batch_size + 1}/{len(X) // batch_size}, Loss: {average_loss:.4f}")
+                f"Epoch {epoch + 1}/{epochs}, Batch {batch_start // batch_size + 1}/{len(X) // batch_size}, Loss: {total_loss:.4f}")
 
         end_time = time.time()
         epoch_time = end_time - start_time
@@ -251,6 +260,12 @@ def train_network(X, y, conv, pool, full, learning_rate=0.01, epochs=200, batch_
         # Print epoch statistics
         average_loss = total_loss / len(X)
         accuracy = correct_predictions / len(data_train) * 100
+        accuracy_graph.append(accuracy)
+        loss_graph.append(average_loss)
+        epochs_graph.append(epoch)
+        # plt.clf()
+        # plot_data(loss_graph, accuracy_graph, epochs_graph) For plotting the data in a graph (WIP)
+        print("Correct predictions: ", correct_predictions)
         print(
             f"Epoch {epoch + 1}/{epochs} - Loss: {average_loss:.4f} - Accuracy: {accuracy:.2f}%")
 
