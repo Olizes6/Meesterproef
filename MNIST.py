@@ -1,5 +1,8 @@
 import numpy as np
+<<<<<<< HEAD
 import matplotlib.pyplot as plt
+=======
+>>>>>>> 750833cc3c21ed73edaa678ac2fc5aea812ff412
 from scipy.signal import correlate2d
 import time
 
@@ -126,7 +129,12 @@ class Fully_Connected:
     def __init__(self, input_size, output_size):
         self.input_size = input_size
         self.output_size = output_size
+<<<<<<< HEAD
         self.weights = np.random.randn(output_size, self.input_size) 
+=======
+        self.weights = np.random.randn(
+            output_size, self.input_size) * np.sqrt(2 / self.input_size)  # He initialization
+>>>>>>> 750833cc3c21ed73edaa678ac2fc5aea812ff412
         self.biases = np.random.randn(output_size, 1)
 
     def softmax(self, z):
@@ -197,7 +205,10 @@ def plot_data(loss_value, accuracy_value, epochs):
     plt.show(block=False)
     plt.pause(0.001)
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 750833cc3c21ed73edaa678ac2fc5aea812ff412
 conv = Convolution(data_train[0].shape, 3, 1)
 pool = MaxPool(2)
 full = Fully_Connected(169, 10)
@@ -260,11 +271,14 @@ def train_network(X, y, conv, pool, full, learning_rate=0.001, epochs=200, batch
         # Print epoch statistics
         average_loss = total_loss / len(X)
         accuracy = correct_predictions / len(data_train) * 100
+<<<<<<< HEAD
         accuracy_graph.append(accuracy)
         loss_graph.append(average_loss)
         epochs_graph.append(epoch)
         # plt.clf()
         # plot_data(loss_graph, accuracy_graph, epochs_graph) For plotting the data in a graph (WIP)
+=======
+>>>>>>> 750833cc3c21ed73edaa678ac2fc5aea812ff412
         print("Correct predictions: ", correct_predictions)
         print(
             f"Epoch {epoch + 1}/{epochs} - Loss: {average_loss:.4f} - Accuracy: {accuracy:.2f}%")
