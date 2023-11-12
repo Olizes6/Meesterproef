@@ -19,7 +19,6 @@ data_train, data_test, labels_train, labels_test = train_test_split(
 data_train = data_train / 255.0
 data_train = data_train.reshape(-1, 28, 28)
 
-
 class Convolution:
 
     def __init__(self, input_shape, filter_size, num_filters):
@@ -202,6 +201,15 @@ def cross_entropy_loss_gradient(y_true, y_pred):
     gradient = -y_true * (1 / (y_pred + epsilon)) / batch_size
 
     return gradient
+
+def plot_data(loss_value, accuracy_value, epochs):
+    plt.plot(epochs, accuracy_value, label = "Accuracy")
+    plt.plot(epochs, loss_value, label = "Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Value")
+    plt.title("Learning progress")
+    plt.show(block=False)
+    plt.pause(0.001)
 
 
 def plot_data(loss_value, accuracy_value, epochs):
