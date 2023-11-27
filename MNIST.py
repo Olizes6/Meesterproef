@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import correlate2d
 import time
+import pickle
+import os
 
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
@@ -19,6 +21,18 @@ data_train, data_test, labels_train, labels_test = train_test_split(
 data_train = data_train / 255.0
 data_train = data_train.reshape(-1, 28, 28)
 
+fig, (ax1, ax2) = plt.subplots(nrows = 2, ncols=1)
+
+resume_training = True
+start_epoch = 0
+
+checkpoint_dir = 'checkpoints/'
+selected_checkpoint = "checkpoints/model_parameters_epoch_2.pkl"
+
+# Check if the directory exists; if not, create it
+if not os.path.exists(checkpoint_dir):
+    os.makedirs(checkpoint_dir)
+
 class Convolution:
 
     def __init__(self, input_shape, filter_size, num_filters):
@@ -33,17 +47,15 @@ class Convolution:
                              filter_size + 1, input_width - filter_size + 1)
         self.filters = np.random.randn(
             *self.filter_shape) * np.sqrt(2 / (input_height * input_width * 1))  # 1 for the amount of channels because MNIST images are greyscale images
-        self.biases = np.zeros((num_filters, 1))
+        self.biases = np.zeros(self.output_shape)
 
     def forward(self, input_data):
         self.input_data = input_data
-        num_images = input_data.shape[0]
-        output = np.zeros((num_images, *self.output_shape))
+        output = np.zeros(self.output_shape)
 
-        for i in range(num_images):
-            for j in range(self.num_filters):
-                output[i, j] = correlate2d(
-                    self.input_data[i], self.filters[j], mode="valid")
+        for i in range(self.num_filters):
+            output[i] = correlate2d(
+                self.input_data, self.filters[i], mode="valid")
 
         # ReLU activation function
         output = np.maximum(0, output)
@@ -51,26 +63,30 @@ class Convolution:
         return output
 
     def backward(self, der_out, learning_rate):
-        num_images = der_out.shape[0]
         der_input = np.zeros_like(self.input_data)
         der_filters = np.zeros_like(self.filters)
-        der_biases = (np.sum(der_out, axis=(0, 2, 3), keepdims=True)).reshape(
-            self.biases.shape)
 
-        for i in range(num_images):
-            for j in range(self.num_filters):
-                # Calculating gradient loss
-                der_filters[j] = correlate2d(
-                    self.input_data[i], der_out[i, j], mode="valid")
-                der_input += correlate2d(der_out[i, j],
-                                         self.filters[j], mode="full")
+        for i in range(self.num_filters):
+            # Calculating gradient loss
+            der_filters[i] = correlate2d(
+                self.input_data, der_out[i], mode="valid")
+            der_input += correlate2d(der_out[i],
+                                        self.filters[i], mode="full")
 
         # Updating filters and biases with learning rate
-        self.filters -= learning_rate * der_filters / num_images
-        self.biases -= learning_rate * der_biases / num_images
-
+        self.filters -= learning_rate * der_filters
+        self.biases -= learning_rate * der_out
         return der_input
-
+    
+    def get_parameters(self):
+        return {
+            "filters": self.filters,
+            "biases": self.biases
+        }
+    
+    def set_parameters(self, parameters):
+        self.filters = parameters["filters"]
+        self.biases = parameters["biases"]
 
 class MaxPool:
 
@@ -79,52 +95,50 @@ class MaxPool:
 
     def forward(self, input_data):
         self.input_data = input_data
-        self.num_images, self.num_channels, self.input_height, self.input_width = input_data.shape
+        self.num_channels, self.input_height, self.input_width = input_data.shape
         self.output_height = self.input_height // self.pool_size
         self.output_width = self.input_width // self.pool_size
 
         # Determining the output shape
-        self.output = np.zeros(
-            (self.num_images, self.num_channels, self.output_height, self.output_width))
+        self.output = np.zeros((self.num_channels, self.output_height, self.output_width))
 
-        for n in range(self.num_images):
-            for channel in range(self.num_channels):
-                # Looping through height
-                for i in range(self.output_height):
-                    # Looping through width
-                    for j in range(self.output_width):
+        for channel in range(self.num_channels):
+            # Looping through height
+            for i in range(self.output_height):
+                # Looping through width
+                for j in range(self.output_width):
 
-                        start_i = i * self.pool_size
-                        start_j = j * self.pool_size
+                    start_i = i * self.pool_size
+                    start_j = j * self.pool_size
 
-                        end_i = start_i + self.pool_size
-                        end_j = start_j + self.pool_size
+                    end_i = start_i + self.pool_size
+                    end_j = start_j + self.pool_size
 
-                        patch = input_data[n, channel,
-                                           start_i:end_i, start_j:end_j]
-                        # Finding max value from each window
-                        self.output[n, channel, i, j] = np.max(patch)
+                    patch = input_data[channel,
+                                        start_i:end_i, start_j:end_j]
+                    # Finding max value from each window
+                    self.output[channel, i, j] = np.max(patch)
 
         return self.output
 
-    def backward(self, der_out, learning_rate):
+    def backward(self, der_out):
         der_input = np.zeros_like(self.input_data)
-        for n in range(self.num_images):
-            for channel in range(self.num_channels):
-                for i in range(self.output_height):
-                    for j in range(self.output_width):
-                        start_i = i * self.pool_size
-                        start_j = j * self.pool_size
 
-                        end_i = start_i + self.pool_size
-                        end_j = start_j + self.pool_size
-                        patch = self.input_data[n, channel,
-                                                start_i:end_i, start_j:end_j]
+        for channel in range(self.num_channels):
+            for i in range(self.output_height):
+                for j in range(self.output_width):
+                    start_i = i * self.pool_size
+                    start_j = j * self.pool_size
 
-                        mask = patch == np.max(patch)
+                    end_i = start_i + self.pool_size
+                    end_j = start_j + self.pool_size
+                    patch = self.input_data[channel,
+                                            start_i:end_i, start_j:end_j]
 
-                        der_input[n, channel, start_i:end_i,
-                                  start_j:end_j] = der_out[n, channel, i, j] * mask
+                    mask = patch == np.max(patch)
+
+                    der_input[channel, start_i:end_i,
+                                start_j:end_j] = der_out[channel, i, j] * mask
 
         return der_input
 
@@ -132,22 +146,11 @@ class MaxPool:
 def softmax(z):
     shifted_z = z - np.max(z)
     exp_z = np.exp(shifted_z)
-    return exp_z / np.sum(exp_z)
+    return exp_z / np.sum(exp_z, axis=0)
 
 
 def softmax_derivative(s):
-    batch_size, num_classes = s.shape
-    der_s = np.zeros((batch_size, num_classes, num_classes))
-    
-    for i in range(batch_size):
-        for j in range(num_classes):
-            for k in range(num_classes):
-                if j == k:
-                    der_s[i, j, k] = s[i, j] * (1 - s[i, k])
-                else:
-                    der_s[i, j, k] = -s[i, j] * s[i, k]
-    
-    return der_s
+    return np.diagflat(s) - np.dot(s, s.T)
 
 
 class Fully_Connected:
@@ -156,128 +159,160 @@ class Fully_Connected:
         self.input_size = input_size
         self.output_size = output_size
         self.weights = np.random.randn(output_size, input_size)
-        self.biases = np.random.randn(output_size)
+        self.biases = np.random.randn(output_size, 1)
 
     def forward(self, input_data):
         self.input_data = input_data
-        self.flattened_input = input_data.reshape(input_data.shape[0], -1)
-        self.z = np.dot(self.flattened_input, self.weights.T) + self.biases
+        self.flattened_input = input_data.flatten().reshape(1, -1)
+        self.z = np.dot(self.weights, self.flattened_input.T) + self.biases
 
         # Applying softmax
         self.output = softmax(self.z)
         return self.output
 
     def backward(self, der_loss, learning_rate):
-        batch_size = der_loss.shape[0]
-        
-        der_softmax = softmax_derivative(self.output)
-    
+        der_y = np.dot(softmax_derivative(self.output), der_loss)
         # Gradient of loss with respect to the input data
-        der_input = np.dot(self.weights.T, der_loss * der_softmax)
+        der_input = np.dot(self.weights.T, der_y).reshape(self.input_data.shape)
 
-        der_w = np.dot(self.flattened_input.T, der_loss * der_softmax) / batch_size
+        der_w = np.dot(der_y, self.flattened_input)
         # Gradient of loss with respect to the biases
-        der_b = np.sum(der_loss * der_softmax, axis=0) / batch_size
+        der_b = der_y
 
         # Update weights and biases based on learning rate
         self.weights -= learning_rate * der_w
         self.biases -= learning_rate * der_b
 
         return der_input
+    
+    def get_parameters(self):
+        return {
+            "weights": self.weights,
+            "biases": self.biases
+        }
+    
+    def set_parameters(self, parameters):
+        self.weights = parameters["weights"]
+        self.biases = parameters["biases"]
 
 
 def cross_entropy_loss(y_true, y_pred):
-    batch_size = y_pred.shape[0]
+    num_samples = y_true.shape[0]
+
     epsilon = 1e-7
     y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
-    loss = -np.sum(y_true * np.log(y_pred + epsilon)) / batch_size
+    loss = -np.sum(y_true * np.log(y_pred + epsilon)) / num_samples
     return loss
 
 
 def cross_entropy_loss_gradient(y_true, y_pred):
-    batch_size = y_true.shape[0]
+    num_samples = y_true.shape[0]
     epsilon = 1e-7
-    gradient = -y_true * (1 / (y_pred + epsilon)) / batch_size
+    gradient = -y_true / (y_pred + epsilon) / num_samples
 
     return gradient
 
-def plot_data(loss_value, accuracy_value, epochs):
-    plt.plot(epochs, accuracy_value, label = "Accuracy")
-    plt.plot(epochs, loss_value, label = "Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Value")
-    plt.title("Learning progress")
-    plt.show(block=False)
-    plt.pause(0.001)
+def plot_data(loss, accuracy, epochs):
+   print(epochs, accuracy, loss)
+   ax1.plot(epochs, accuracy, color="#FFA500")
+   ax2.plot(epochs, loss, color="#0096FF")
+
+   ax1.set_title("Model Accuracy")
+   ax1.set_ylabel("Accuracy")
+   ax1.set_xlabel("Epoch")
+
+   ax2.set_title("Model Loss")
+   ax2.set_ylabel("Loss")
+   ax2.set_xlabel("Epoch")
+
+   plt.tight_layout()
+   plt.show()
+
 
 conv = Convolution(data_train[0].shape, 3, 32)
 pool = MaxPool(2)
 full = Fully_Connected(5408, 10)
 
-def train_network(X_train, y_train, conv, pool, full, learning_rate=0.001, epochs=24, batch_size=64):
+if resume_training and os.path.exists(selected_checkpoint):
+    with open(selected_checkpoint, "rb") as file:
+        loaded_checkpoint = pickle.load(file)
+
+    conv.set_parameters(loaded_checkpoint["conv"])
+    full.set_parameters(loaded_checkpoint["full"])
+    start_epoch = loaded_checkpoint["epoch"]
+    print("Loaded checkpoint: ", loaded_checkpoint)
+
+def train_network(X_train, y_train, conv, pool, full, learning_rate=0.01, epochs=24):
     start_time = time.time()
     accuracy_graph = []  # To store accuracy values for each epoch
     loss_graph = []  # To store loss values for each epoch
-    epochs_graph = []
-
-    num_batches = len(X_train) // batch_size
-
-    for epoch in range(epochs):
+    initial_learning_rate = learning_rate
+    epoch_graph = []
+    for epoch in range(start_epoch, epochs):
         total_loss = 0.0
         correct_predictions = 0
-
-        # One-hot encode the labels for the entire batch
-        batch_labels_one_hot = np.zeros((len(X_train), 10))
-        for i, label in enumerate(y_train):
-            batch_labels_one_hot[i, label] = 1
-
-        # Iterate over batches
-        for batch_start in range(0, len(X_train), batch_size):
-            batch_end = min(batch_start + batch_size, len(X_train))
-            batch_X = X_train[batch_start:batch_end]
-            batch_y = batch_labels_one_hot[batch_start:batch_end]
+        # Reduce learning rate to reach convergence faster
+        new_learning_rate = (1 / (1 + 1.5 * epoch)) * initial_learning_rate
+        learning_rate = new_learning_rate 
+        print("current learning rate: ", new_learning_rate)
+        for i in range(len(X_train)):
 
             # Forward propagation
-            conv_out = conv.forward(batch_X)
+            conv_out = conv.forward(X_train[i])
             pool_out = pool.forward(conv_out)
             full_out = full.forward(pool_out)
 
-            # Calculate the cross entropy loss for the entire batch
-            batch_loss = cross_entropy_loss(batch_y, full_out)
-            print(batch_loss)
+            # Convert the scalar label to one-hot encoding
+            # Assuming there are 10 classes in MNIST
+            actual_label_one_hot = np.zeros(10)
+            actual_label_one_hot[y_train[i]] = 1
 
-            total_loss += batch_loss
+            loss = cross_entropy_loss(actual_label_one_hot, full_out.flatten())
+            total_loss += loss
+
+            one_hot_pred = np.zeros_like(full_out)
+            one_hot_pred[np.argmax(full_out)] = 1
+            one_hot_pred = one_hot_pred.flatten()
 
             # Calculate the accuracy of the predictions for this batch
-            one_hot_pred = softmax(full_out)
-            num_pred = np.argmax(one_hot_pred, axis=0)
-            num_y = np.argmax(batch_y, axis=1)
+            num_pred = np.argmax(one_hot_pred)
+           
+            correct_predictions += np.sum(num_pred == y_train[i])
 
-            correct_predictions += np.sum(num_pred == num_y)
+            if (i + 1) % 500 == 0:
+                print(f"Accuracy: {((correct_predictions / (i + 1)) * 100):.2f}% Loss: {total_loss / (i + 1)}")
             # Backward propagation
-            gradient = cross_entropy_loss_gradient(batch_y, full_out)
+            gradient = cross_entropy_loss_gradient(actual_label_one_hot, full_out.flatten()).reshape((-1, 1))
             full_back = full.backward(gradient, learning_rate)
-            pool_back = pool.backward(full_back, learning_rate)
+            pool_back = pool.backward(full_back)
             conv_back = conv.backward(pool_back, learning_rate)
-
-            print(
-                f"Epoch {epoch + 1}/{epochs}, Batch {batch_start // batch_size + 1}/{num_batches} Loss: {batch_loss:.4f}")
-
         end_time = time.time()
         epoch_time = end_time - start_time
-        print(f"Epoch {epoch + 1} execution time: {epoch_time:.2f} seconds")
 
         # Calculate the average loss for this epoch
-        average_loss = total_loss / num_batches
+        average_loss = total_loss / len(X_train)
 
         # Calculate the accuracy for this epoch
         accuracy = correct_predictions / len(X_train) * 100
-
+        print(f"Epoch {epoch + 1}/{epochs} - Loss: {average_loss:.4f} - Accuracy: {accuracy:.2f}% execution time: {epoch_time:.2f} seconds")
         # Append the accuracy and loss values to their respective lists
         accuracy_graph.append(accuracy)
         loss_graph.append(average_loss)
-        epochs_graph.append(epoch)
+        epoch_graph.append(epoch)
+        #plot_data(loss_graph, accuracy_graph, epoch_graph)
 
+        # Save model parameters
+        checkpoint_filename = f'{checkpoint_dir}model_parameters_epoch_{epoch + 1}.pkl'
+        conv_parameters = conv.get_parameters()
+        full_parameters = full.get_parameters()
+
+        with open(checkpoint_filename, "wb") as file:
+            pickle.dump({
+                "epoch": epoch + 1,
+                "conv": conv_parameters, 
+                "full": full_parameters
+            }, file)
+            
     end_time = time.time()
     total_execution_time = end_time - start_time
     print(f"Total execution time: {total_execution_time:.2f} seconds")
