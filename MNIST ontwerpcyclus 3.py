@@ -31,9 +31,10 @@ labels_test = labels_test[:10000]
 
 resume_training = False
 start_epoch = 0
-
+print("Training images: ", len(data_train))
+print("Test images: ", len(data_test))
 checkpoint_dir = 'checkpoints_ontwerpcyclus_3.1/'
-selected_checkpoint = (f"{checkpoint_dir}model_parameters_epoch_4.pkl")
+selected_checkpoint = (f"{checkpoint_dir}model_parameters_epoch_13.pkl")
 
 # Check if the directory exists; if not, create it
 if not os.path.exists(checkpoint_dir):
