@@ -28,7 +28,7 @@ data_test = data_test.reshape(-1, 28, 28)
 labels_train = labels_train[:40000]
 
 labels_test = labels_test[:10000] 
-print("Training images: ", len(data_train), "Test images: ", len(data_test))
+
 resume_training = True
 start_epoch = 0
 checkpoint_dir = 'checkpoints_ontwerpcyclus_1/'
