@@ -28,8 +28,8 @@ data_test = data_test.reshape(-1, 28, 28)
 labels_train = labels_train[:40000]
 
 labels_test = labels_test[:10000] 
-
-resume_training = False
+print("Training images: ", len(data_train), "Test images: ", len(data_test))
+resume_training = True
 start_epoch = 0
 checkpoint_dir = 'checkpoints_ontwerpcyclus_1/'
 selected_checkpoint = (f"{checkpoint_dir}model_parameters_epoch_24.pkl")
@@ -101,6 +101,7 @@ class MaxPool:
 
         self.input_data = input_data
         self.num_channels, self.input_height, self.input_width = input_data.shape
+        # Reducing the feature map size by dividing by the pool size
         self.output_height = self.input_height // self.pool_size
         self.output_width = self.input_width // self.pool_size
 
@@ -121,16 +122,18 @@ class MaxPool:
                     end_j = start_j + self.pool_size
 
                     patch = input_data[channel, start_i:end_i, start_j:end_j]
-                    # Finding max value from each window
+                    # Finding max value from each patch
                     self.output[channel, i, j] = np.max(patch)
 
         return self.output
 
-    def backward(self, der_out, learning_rate):
+    def backward(self, der_out):
         der_input = np.zeros_like(self.input_data)
 
         for channel in range(self.num_channels):
+            # Looping through height
             for i in range(self.output_height):
+                # Looping through width
                 for j in range(self.output_width):
                     start_i = i * self.pool_size
                     start_j = j * self.pool_size
@@ -141,7 +144,7 @@ class MaxPool:
                                             start_i:end_i, start_j:end_j]
 
                     mask = patch == np.max(patch)
-
+                    
                     der_input[channel, start_i:end_i,
                               start_j:end_j] = der_out[channel, i, j] * mask
 
@@ -210,19 +213,18 @@ class Fully_Connected:
         self.biases = parameters["biases"]
 
 
-def cross_entropy_loss(predictions, targets):
-    num_samples = 10
+def cross_entropy_loss(y_true, y_pred):
+    num_samples = len(y_true)
 
     epsilon = 1e-7
-    predictions = np.clip(predictions, epsilon, 1 - epsilon)
-    loss = -np.sum(targets * np.log(predictions)) / num_samples
+    y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
+    loss = -np.sum(y_true * np.log(y_pred)) / num_samples
     return loss
 
 
-def cross_entropy_loss_gradient(actual_labels, predicted_probs):
-    num_samples = actual_labels.shape[0]
-    gradient = -actual_labels / (predicted_probs + 1e-7) / num_samples
-
+def cross_entropy_loss_gradient(y_true, y_pred):
+    num_samples = len(y_true)
+    gradient = -y_true / (y_pred + 1e-7) / num_samples
     return gradient
 
 def plot_data(train_loss, train_accuracy, epochs):
@@ -261,10 +263,10 @@ if resume_training and os.path.exists(selected_checkpoint):
     accuracy_data = loaded_checkpoint['accuracy_data']
     loss_data = loaded_checkpoint['loss_data']
     start_epoch = loaded_checkpoint["epoch"]
+    print(loaded_checkpoint["accuracy_data"], loaded_checkpoint["loss_data"])
 
 with open(selected_checkpoint, 'rb') as file:
     loaded_checkpoint = pickle.load(file)
-    print(loaded_checkpoint["loss_data"], loaded_checkpoint["accuracy_data"], loaded_checkpoint["epoch"])
     plot_data(loaded_checkpoint["loss_data"], loaded_checkpoint["accuracy_data"], loaded_checkpoint["epoch"])
 
 def train_network(X_train, y_train, conv, pool, full, learning_rate=0.01, epochs=24, batch_size=64):
@@ -289,7 +291,7 @@ def train_network(X_train, y_train, conv, pool, full, learning_rate=0.01, epochs
                 actual_label_one_hot = np.zeros(10)
                 actual_label_one_hot[batch_y[i]] = 1
 
-                loss = cross_entropy_loss(full_out.flatten(), batch_y[i])
+                loss = cross_entropy_loss(actual_label_one_hot, full_out.flatten())
                 total_loss += loss
 
                 # Converting to One-Hot encoding
@@ -307,7 +309,7 @@ def train_network(X_train, y_train, conv, pool, full, learning_rate=0.01, epochs
                 gradient = cross_entropy_loss_gradient(
                     actual_label_one_hot, full_out.flatten()).reshape((-1, 1))
                 full_back = full.backward(gradient, learning_rate)
-                pool_back = pool.backward(full_back, learning_rate)
+                pool_back = pool.backward(full_back)
                 conv_back = conv.backward(pool_back, learning_rate)
 
         # Print epoch statistics
