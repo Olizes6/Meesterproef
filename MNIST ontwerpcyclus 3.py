@@ -29,12 +29,12 @@ data_test = data_test.reshape(-1, 28, 28)
 labels_train = labels_train[:40000]
 
 labels_test = labels_test[:10000] 
-print("Training images: ", len(data_train), "Test images: ", len(data_test))
+
 resume_training = True
 start_epoch = 0
 
-checkpoint_dir = 'checkpoints_ontwerpcyclus_2/'
-selected_checkpoint = (f"{checkpoint_dir}model_parameters_epoch_13.pkl")
+checkpoint_dir = 'checkpoints_ontwerpcyclus_3.1/'
+selected_checkpoint = (f"{checkpoint_dir}model_parameters_epoch_17.pkl")
 
 # Check if the directory exists; if not, create it
 if not os.path.exists(checkpoint_dir):
@@ -42,11 +42,11 @@ if not os.path.exists(checkpoint_dir):
 
 class Convolution:
 
-    def __init__(self, input_shape, filter_size, num_filters):
+    def __init__(self, input_shape, filter_size, num_filters, momentum):
         input_height, input_width = input_shape
         self.num_filters = num_filters
         self.input_shape = input_shape
-
+        self.momentum = momentum
         # Size of outputs and kernels
 
         self.filter_shape = (num_filters, filter_size, filter_size)  # (3,3)
@@ -56,6 +56,10 @@ class Convolution:
         self.filters = np.random.randn(
             *self.filter_shape) * np.sqrt(2 / np.prod(self.filter_shape[1:]))
         self.biases = np.zeros(self.output_shape)
+        print(self.biases)
+
+        self.filter_momentum = np.zeros_like(self.filters)
+        self.bias_momentum = np.zeros_like(self.biases)
 
     def forward(self, input_data):
         self.input_data = input_data
@@ -63,7 +67,7 @@ class Convolution:
 
         for i in range(self.num_filters):
             output[i] = correlate2d(
-                self.input_data, self.filters[i], mode="valid")
+                self.input_data, self.filters[i], mode="valid") + self.biases[i]
 
         # ReLU activation function
         output = np.maximum(0, output)
@@ -80,21 +84,28 @@ class Convolution:
                 self.input_data, der_out[i], mode="valid")
             der_input += correlate2d(der_out[i],
                                         self.filters[i], mode="full")
+               
+        self.filter_momentum = self.momentum * self.filter_momentum + learning_rate * der_filters
+        self.bias_momentum = self.momentum * self.bias_momentum + learning_rate * der_out
 
         # Updating filters and biases with learning rate
-        self.filters -= learning_rate * der_filters
-        self.biases -= learning_rate * der_out
+        self.filters -= self.filter_momentum
+        self.biases -= self.bias_momentum
         return der_input
     
     def get_parameters(self):
         return {
             "filters": self.filters,
-            "biases": self.biases
+            "biases": self.biases,
+            "filter_momentum": self.filter_momentum,
+            "bias_momentum": self.bias_momentum
         }
     
     def set_parameters(self, parameters):
         self.filters = parameters["filters"]
         self.biases = parameters["biases"]
+        self.filter_momentum = parameters["filter_momentum"]
+        self.bias_momentum = parameters["bias_momentum"]
 
 class MaxPool:
 
@@ -163,11 +174,15 @@ def softmax_derivative(s):
 
 class Fully_Connected:
 
-    def __init__(self, input_size, output_size):
+    def __init__(self, input_size, output_size, momentum):
         self.input_size = input_size
         self.output_size = output_size
         self.weights = np.random.randn(output_size, input_size)
         self.biases = np.zeros(output_size).reshape(-1, 1)
+        self.momentum = momentum
+
+        self.weight_momentum = np.zeros_like(self.weights)
+        self.bias_momentum = np.zeros_like(self.biases)
 
     def forward(self, input_data):
         self.input_data = input_data
@@ -186,21 +201,28 @@ class Fully_Connected:
         # Gradient of loss with respect to the biases
         der_b = der_y
 
+        self.weight_momentum = self.momentum * self.weight_momentum + learning_rate * der_w
+        self.bias_momentum = self.momentum * self.bias_momentum + learning_rate * der_b
+
         # Update weights and biases based on learning rate
-        self.weights -= learning_rate * der_w
-        self.biases -= learning_rate * der_b
+        self.weights -= self.weight_momentum
+        self.biases -= self.bias_momentum
 
         return der_input
     
     def get_parameters(self):
         return {
             "weights": self.weights,
-            "biases": self.biases
+            "biases": self.biases,
+            "weight_momentum": self.weight_momentum,
+            "bias_momentum": self.bias_momentum
         }
     
     def set_parameters(self, parameters):
         self.weights = parameters["weights"]
         self.biases = parameters["biases"]
+        self.weight_momentum = parameters["weight_momentum"]
+        self.bias_momentum = parameters["bias_momentum"]
 
 
 def cross_entropy_loss(y_true, y_pred):
@@ -238,9 +260,9 @@ def plot_data(train_loss, train_accuracy, val_loss, val_accuracy, epochs):
     plt.show()
 
 
-conv = Convolution(data_train[0].shape, 3, 32)
+conv = Convolution(data_train[0].shape, 3, 32, 0)
 pool = MaxPool(2)
-full = Fully_Connected(5408, 10)
+full = Fully_Connected(5408, 10, 0)
 accuracy_data = []  
 loss_data = [] 
 val_accuracy_data = []
@@ -257,6 +279,7 @@ if resume_training and os.path.exists(selected_checkpoint):
     accuracy_data = loaded_checkpoint['accuracy_data']
     loss_data = loaded_checkpoint['loss_data']
     val_accuracy_data = loaded_checkpoint['val_accuracy_data']
+    print(accuracy_data)
     val_loss_data = loaded_checkpoint['val_loss_data']
     start_epoch = loaded_checkpoint["epoch"]
     print(loaded_checkpoint)
@@ -265,7 +288,7 @@ with open(selected_checkpoint, 'rb') as file:
     loaded_checkpoint = pickle.load(file)
     print(loaded_checkpoint["loss_data"], loaded_checkpoint["accuracy_data"], loaded_checkpoint["val_loss_data"], loaded_checkpoint["val_accuracy_data"], loaded_checkpoint["epoch"])
     plot_data(loaded_checkpoint["loss_data"], loaded_checkpoint["accuracy_data"], loaded_checkpoint["val_loss_data"], loaded_checkpoint["val_accuracy_data"], loaded_checkpoint["epoch"])
-
+    
 def train_network(X_train, y_train, X_val, y_val, conv, pool, full, learning_rate=0.01, epochs=24):
     start_time = time.time()
     initial_learning_rate = learning_rate
