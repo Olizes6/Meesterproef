@@ -84,6 +84,7 @@ class Convolution:
         # Updating filters and biases with learning rate
         self.filters -= learning_rate * der_filters
         self.biases -= learning_rate * der_out
+        print(self.filters)
         return der_input
     
     def get_parameters(self):
@@ -95,6 +96,37 @@ class Convolution:
     def set_parameters(self, parameters):
         self.filters = parameters["filters"]
         self.biases = parameters["biases"]
+
+def visualize_feature_maps(conv, input_image):
+    conv_out = conv.forward(input_image)
+    num_filters = conv_out.shape[0]
+    
+    fig, axes = plt.subplots(4, 8, figsize=(12, 6))
+    fig.suptitle('Visualization of Convolutional Layer Feature Maps')
+
+    for i in range(4):
+        for j in range(8):
+            filter_index = i * 8 + j
+            if filter_index < num_filters:
+                axes[i, j].imshow(conv_out[filter_index], cmap='viridis')
+                axes[i, j].axis('off')
+            else:
+                axes[i, j].axis('off')
+
+    plt.show()
+
+def visualize_filters(conv):
+    num_filters = conv.filters.shape[0]
+
+    fig, axes = plt.subplots(num_filters // 4, 4, figsize=(8, 8))
+    fig.suptitle('Visualization of Convolutional Filters')
+
+    for i in range(num_filters):
+        filter_image = conv.filters[i]
+        axes[i // 4, i % 4].imshow(filter_image, cmap='viridis')
+        axes[i // 4, i % 4].axis('off')
+
+    plt.show()
 
 class MaxPool:
 
@@ -261,11 +293,6 @@ if resume_training and os.path.exists(selected_checkpoint):
     start_epoch = loaded_checkpoint["epoch"]
     print(loaded_checkpoint)
 
-with open(selected_checkpoint, 'rb') as file:
-    loaded_checkpoint = pickle.load(file)
-    print(loaded_checkpoint["loss_data"], loaded_checkpoint["accuracy_data"], loaded_checkpoint["val_loss_data"], loaded_checkpoint["val_accuracy_data"], loaded_checkpoint["epoch"])
-    plot_data(loaded_checkpoint["loss_data"], loaded_checkpoint["accuracy_data"], loaded_checkpoint["val_loss_data"], loaded_checkpoint["val_accuracy_data"], loaded_checkpoint["epoch"])
-
 def train_network(X_train, y_train, X_val, y_val, conv, pool, full, learning_rate=0.01, epochs=24):
     start_time = time.time()
     initial_learning_rate = learning_rate
@@ -306,6 +333,11 @@ def train_network(X_train, y_train, X_val, y_val, conv, pool, full, learning_rat
 
             if (i + 1) % 500 == 0:
                 print(f"Accuracy: {((correct_predictions / (i + 1)) * 100):.2f}% Loss: {total_loss / (i + 1)}")
+
+                # Visualize feature maps after every 500 iterations
+                visualize_feature_maps(conv, X_train[i])
+                plt.pause(0.1)  # Pause to allow time for the plots to be displayed
+
             # Backward propagation
             gradient = cross_entropy_loss_gradient(actual_label_one_hot, full_out.flatten()).reshape((-1, 1))
             full_back = full.backward(gradient, learning_rate)
@@ -379,7 +411,6 @@ def train_network(X_train, y_train, X_val, y_val, conv, pool, full, learning_rat
     print(f"Final Training Accuracy: {accuracy:.2f}%, Final Training Loss: {average_loss:.4f}")
     print(f"Final Validation Accuracy: {val_accuracy:.2f}%, Final Validation Loss: {val_average_loss:.4f}")
 
-    # Call this function after training is complete
     plot_data(loss_data, accuracy_data, val_loss_data, val_accuracy_data, epoch_data)
 
 train_network(data_train, labels_train, data_test, labels_test, conv, pool, full)
